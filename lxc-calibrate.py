@@ -6,9 +6,11 @@ from subprocess import check_output
 
 # ------------------------------------------------------------------------------
 
+help = 'python lxc-calibrate <container name> <target time>'
+
 # Use argparse if this gets any more complicated
 if len(sys.argv) != 3:
-    print('python lxc-stress <container name> <target time>')
+    print(help)
     exit(0)
 
 CONTAINER_NAME = sys.argv[1]
@@ -18,7 +20,7 @@ try:
 except TypeError:
     print('<target time> must be a valid float')
     print('')
-    print('python lxc-stress <container name> <target time>')
+    print(help)
     exit(1)
 
 MAX_NUM_RUNS = 20
