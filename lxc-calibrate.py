@@ -51,7 +51,7 @@ def halve(n):
 # Ensure the container has been started
 check_output(['lxc-start', '--quiet', '-n', CONTAINER_NAME])
 # Tell cgroups we want to limit CPU usage per second
-check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', CFS_PERIOD])
+check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', str(CFS_PERIOD)])
 
 cur_cfs_quota = halve(CFS_PERIOD)  # Middle of current cpu.cfs_period_us
 cur_cfs_quota_delta = halve(cur_cfs_quota)  # Middle of cur_cfs_quota
