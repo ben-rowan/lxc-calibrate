@@ -24,6 +24,7 @@ except TypeError:
     exit(1)
 
 MAX_NUM_RUNS = 20
+CFS_PERIOD = 1000000  # 1 sec
 
 calc_pie = 'sum(1/16**k * (4/(8*k+1) - 2/(8*k+4) - 1/(8*k+5) - 1/(8*k+6)) for k in xrange({}))'
 
@@ -42,43 +43,46 @@ def stress_container_cpu(num_passes=20000):
 def set_cgroup_quota(quota=500000):
     check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_quota_us', str(quota)])
 
+def halve(n):
+    return int(n / 2.0)
+
 # ------------------------------------------------------------------------------
 
 # Ensure the container has been started
 check_output(['lxc-start', '--quiet', '-n', CONTAINER_NAME])
 # Tell cgroups we want to limit CPU usage per second
-check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', '1000000'])
+check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', CFS_PERIOD])
 
-cur_quota = 500000  # Middle of current cpu.cfs_period_us
-cur_quota_delta = 250000  # Middle of cur_quota
+cur_cfs_quota = halve(CFS_PERIOD)  # Middle of current cpu.cfs_period_us
+cur_cfs_quota_delta = halve(cur_cfs_quota)  # Middle of cur_cfs_quota
 margin_of_error = 0.5  # Accept run times +/- this amount
 match_found = False
 
 print('\nTarget run time: {}'.format(TARGET_TIME))
 
 for __ in xrange(0, MAX_NUM_RUNS):
-    set_cgroup_quota(cur_quota)
+    set_cgroup_quota(cur_cfs_quota)
     run_time = stress_container_cpu()
 
     print('')
     print('Current run time: {}'.format(run_time))
-    print('Current quota: {}'.format(cur_quota))
+    print('Current quota: {}'.format(cur_cfs_quota))
 
     if run_time < TARGET_TIME - margin_of_error:
-        cur_quota = cur_quota - cur_quota_delta
+        cur_cfs_quota = cur_cfs_quota - cur_cfs_quota_delta
     elif run_time > TARGET_TIME + margin_of_error:
-        cur_quota = cur_quota + cur_quota_delta
+        cur_cfs_quota = cur_cfs_quota + cur_cfs_quota_delta
     else: # Found match
         print('')
         print('-----------------------------------')
         print('Final run time: {}'.format(run_time))
-        print('Final quota: {}'.format(cur_quota))
+        print('Final quota: {}'.format(cur_cfs_quota))
         print('-----------------------------------')
         print('')
         match_found = True
         break
 
-    cur_quota_delta = int(cur_quota_delta / 2.0)
+    cur_cfs_quota_delta = halve(cur_cfs_quota_delta)
 
 if not match_found:
     print('No match found')
