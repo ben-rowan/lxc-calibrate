@@ -2,31 +2,51 @@
 
 import sys
 import time
+import argparse
 from subprocess import check_output
+from subprocess import CalledProcessError
 
 # ------------------------------------------------------------------------------
 
-help = 'python lxc-calibrate <container name> <target time>'
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    'container_name',
+    help='The name of the container you wish to calibrate.',
+    type=str
+)
+parser.add_argument(
+    'target_time',
+    help='The target run time to calibrate the container with (float).',
+    type=float
+)
+parser.add_argument(
+    '--max_num_runs', '-m',
+    help='Set the maximum number of times the search algorithm will run.',
+    default=20,
+    type=int
+)
+parser.add_argument(
+    '--cfs_period', '-p',
+    help='Set the cgroups cpu.cfs_period_us',
+    default=1000000,  # 1 sec
+    type=int
+)
+parser.add_argument(
+    '--margin_of_error', '-e',
+    help='Accept run times +/- this amount (seconds)',
+    default=0.5,
+    type=float
+)
 
-# Use argparse if this gets any more complicated
-if len(sys.argv) != 3:
-    print(help)
-    exit(0)
+args = parser.parse_args()
 
-CONTAINER_NAME = sys.argv[1]
+CONTAINER_NAME = args.container_name
+TARGET_TIME = args.target_time
+MAX_NUM_RUNS = args.max_num_runs
+CFS_PERIOD = args.cfs_period
+MARGIN_OF_ERROR = args.margin_of_error
 
-try:
-    TARGET_TIME = float(sys.argv[2])
-except TypeError:
-    print('<target time> must be a valid float')
-    print('')
-    print(help)
-    exit(1)
-
-MAX_NUM_RUNS = 20
-CFS_PERIOD = 1000000  # 1 sec
-
-calc_pie = 'sum(1/16**k * (4/(8*k+1) - 2/(8*k+4) - 1/(8*k+5) - 1/(8*k+6)) for k in xrange({}))'
+CALC_PIE = 'sum(1/16**k * (4/(8*k+1) - 2/(8*k+4) - 1/(8*k+5) - 1/(8*k+6)) for k in xrange({}))'
 
 # ------------------------------------------------------------------------------
 
@@ -35,7 +55,7 @@ def stress_container_cpu(num_passes=20000):
     check_output([
         'lxc-attach',
          '-n', CONTAINER_NAME,
-          '--', 'python', '-c', calc_pie.format(num_passes)
+          '--', 'python', '-c', CALC_PIE.format(num_passes)
     ])
     end_time = time.time()
     return end_time - start_time
@@ -48,14 +68,22 @@ def halve(n):
 
 # ------------------------------------------------------------------------------
 
-# Ensure the container has been started
-check_output(['lxc-start', '--quiet', '-n', CONTAINER_NAME])
-# Tell cgroups we want to limit CPU usage per second
-check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', str(CFS_PERIOD)])
+try:
+    # Ensure container has been started
+    check_output(['lxc-start', '--quiet', '-n', CONTAINER_NAME])
+except CalledProcessError:
+    print('Failed to start container \'{}\''.format(CONTAINER_NAME))
+    exit(1)
+
+try:
+    # Tell cgroups how we want to limit CPU usage (default is per second)
+    check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_period_us', str(CFS_PERIOD)])
+except CalledProcessError:
+    print('Unable to set a cpu.cfs_period_us of \'{}\''.format(CFS_PERIOD))
+    exit(1)
 
 cur_cfs_quota = halve(CFS_PERIOD)  # Middle of current cpu.cfs_period_us
 cur_cfs_quota_delta = halve(cur_cfs_quota)  # Middle of cur_cfs_quota
-margin_of_error = 0.5  # Accept run times +/- this amount
 match_found = False
 
 print('\nTarget run time: {}'.format(TARGET_TIME))
@@ -68,9 +96,9 @@ for __ in xrange(0, MAX_NUM_RUNS):
     print('Current run time: {}'.format(run_time))
     print('Current quota: {}'.format(cur_cfs_quota))
 
-    if run_time < TARGET_TIME - margin_of_error:
+    if run_time < TARGET_TIME - MARGIN_OF_ERROR:
         cur_cfs_quota = cur_cfs_quota - cur_cfs_quota_delta
-    elif run_time > TARGET_TIME + margin_of_error:
+    elif run_time > TARGET_TIME + MARGIN_OF_ERROR:
         cur_cfs_quota = cur_cfs_quota + cur_cfs_quota_delta
     else: # Found match
         print('')
