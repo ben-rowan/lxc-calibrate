@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys
 import time
 import argparse
 from subprocess import check_output
@@ -48,25 +47,31 @@ MARGIN_OF_ERROR = args.margin_of_error
 
 CALC_PIE = 'sum(1/16**k * (4/(8*k+1) - 2/(8*k+4) - 1/(8*k+5) - 1/(8*k+6)) for k in xrange({}))'
 
+
 # ------------------------------------------------------------------------------
+
 
 def stress_container_cpu(num_passes=20000):
     start_time = time.time()
     check_output([
         'lxc-attach',
-         '-n', CONTAINER_NAME,
-          '--', 'python', '-c', CALC_PIE.format(num_passes)
+        '-n', CONTAINER_NAME,
+        '--', 'python', '-c', CALC_PIE.format(num_passes)
     ])
     end_time = time.time()
     return end_time - start_time
 
+
 def set_cgroup_quota(quota=500000):
     check_output(['lxc-cgroup', '-n', CONTAINER_NAME, 'cpu.cfs_quota_us', str(quota)])
+
 
 def halve(n):
     return int(n / 2.0)
 
+
 # ------------------------------------------------------------------------------
+
 
 try:
     # Ensure container has been started
@@ -100,7 +105,7 @@ for __ in xrange(0, MAX_NUM_RUNS):
         cur_cfs_quota = cur_cfs_quota - cur_cfs_quota_delta
     elif run_time > TARGET_TIME + MARGIN_OF_ERROR:
         cur_cfs_quota = cur_cfs_quota + cur_cfs_quota_delta
-    else: # Found match
+    else:  # Found match
         print('')
         print('-----------------------------------')
         print('Final run time: {}'.format(run_time))
